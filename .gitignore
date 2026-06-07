@@ -3,6 +3,14 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+
+# 가상환경 폴더 제외 (★정확하게 한 줄 차지)
+.venv/
+
+# 환경변수 파일 제외 (혹시 나중에 쓸지 모를 .env 파일도 한 줄로 분리)
+*.env
+
+
 # User-specific files
 *.rsuser
 *.suo
