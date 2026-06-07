@@ -2,7 +2,7 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime
 # database.py에서 Base를 가져옵니다.
-from database import Base
+from app.db.database import Base
 
 class ChatMessageDB(Base):
     __tablename__ = "chat_messages"
