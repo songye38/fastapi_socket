@@ -1,5 +1,20 @@
 import bcrypt
 from . import repository
+import jwt
+import datetime
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # 이거 꼭 해줘야 함
+
+SECRET_KEY = os.getenv("SECRET_KEY")  # 실제로는 환경변수로 숨겨야 합니다!
+ALGORITHM = "HS256"
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=30)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def register_user(db, user_data):
     # 1. 비밀번호 길이 제한 (72자)
