@@ -2,11 +2,30 @@ import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
+# ★ CORS 처리를 위한 미들웨어 임포트
+from fastapi.middleware.cors import CORSMiddleware
+
 # database, models 파일에서 필요한 부품들 수입
 from database import engine, SessionLocal
 import models
 
 app = FastAPI()
+
+
+# ★ [추가] CORS 설정 구역
+# 여기에 허용할 프론트엔드 주소들을 적어줍니다.
+origins = [
+    "http://localhost:5173",    # 로컬 React 개발 서버 주소
+    "https://my-chat-seven-mu.vercel.app/" # ★ 방금 배포 성공한 Vercel 주소 입력!
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,          # 허용할 고향(Origin) 주소들
+    allow_credentials=True,
+    allow_methods=["*"],            # GET, POST, PUT, DELETE 등 모든 메서드 허용
+    allow_headers=["*"],            # 모든 헤더 허용
+)
 
 # [테이블 생성] 서버 시작 시 데이터베이스에 테이블 자동 생성
 models.Base.metadata.create_all(bind=engine)
