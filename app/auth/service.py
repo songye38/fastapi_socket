@@ -16,3 +16,15 @@ def register_user(db, user_data):
 def verify_password(plain_password, hashed_password):
     # 나중에 로그인 로직에서 사용할 검증 함수
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+
+def authenticate_user(db, username, password):
+    # 1. 유저 조회
+    user = repository.get_user_by_username(db, username)
+    if not user:
+        return None
+    
+    # 2. 비밀번호 검증 (DB에 저장된 해시값과 비교)
+    if bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+        return user
+    return None
