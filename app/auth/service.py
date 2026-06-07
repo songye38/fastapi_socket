@@ -11,7 +11,11 @@ def register_user(db, user_data):
     hashed_password = bcrypt.hashpw(pwd_bytes, salt)
     
     # 3. 데이터베이스에 저장할 때는 문자열로 변환하여 저장
-    return repository.create_user(db, user_data.username, hashed_password.decode('utf-8'))
+    # return repository.create_user(db, user_data.username, hashed_password.decode('utf-8'))
+    user = repository.create_user(db, user_data.username, hashed_password.decode('utf-8'))
+    if not user:
+        return None # 중복 처리 이미 있는 아이디라면 none을 반환한다. 
+    return user
 
 def verify_password(plain_password, hashed_password):
     # 나중에 로그인 로직에서 사용할 검증 함수

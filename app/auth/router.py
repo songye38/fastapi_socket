@@ -8,7 +8,14 @@ router = APIRouter()
 @router.post("/signup", response_model=schemas.UserResponse)
 def signup(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     # 이미 존재하는지 확인 로직 추가 가능
-    return service.register_user(db, user_data)
+    user = service.register_user(db, user_data)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미 존재하는 아이디입니다."
+        )
+    return user
 
 
 @router.post("/login")
