@@ -32,3 +32,10 @@ app.include_router(auth_router, prefix="/auth")
 
 
 
+# main.py 맨 마지막에 추가
+if __name__ == "__main__":
+    import uvicorn
+    # 8000번 포트는 Railway에서 관례적으로 많이 쓰입니다. 
+    # 하지만 Railway가 자동으로 정해주는 포트가 있다면 
+    # uvicorn main:app --host 0.0.0.0 --port $PORT 명령어가 이를 대신합니다.
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
