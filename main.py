@@ -4,30 +4,35 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- [1. 웹소켓 연결 관리자] ---
-# 접속한 유저들의 소켓 연결을 보관하고, 메시지를 브로드캐스트하는 역할을 합니다.
+# --- [1. 웹소켓 연결 관리자 (방 관리 기능 업그레이드!)] ---
 class ConnectionManager:
     def __init__(self):
-        # 접속한 모든 클라이언트 소켓을 리스트로 보관
-        self.active_connections: list[WebSocket] = []
+        # { "방이름": [WebSocket, WebSocket, ...] } 형태로 저장합니다.
+        self.room_connections: dict[str, list[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept() # Handshake 승인! 이제 선이 연결됩니다.
-        self.active_connections.append(websocket)
+    async def connect(self, room_id: str, websocket: WebSocket):
+        await websocket.accept()
+        # 만약 처음 만들어진 방이라면, 새로운 리스트(바구니)를 생성합니다.
+        if room_id not in self.room_connections:
+            self.room_connections[room_id] = []
+        self.room_connections[room_id].append(websocket)
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect(self, room_id: str, websocket: WebSocket):
+        self.room_connections[room_id].remove(websocket)
+        # 방에 아무도 없으면 방 자체를 삭제해서 서버 메모리를 아낍니다.
+        if not self.room_connections[room_id]:
+            del self.room_connections[room_id]
 
-    async def broadcast(self, message: str):
-        # 연결된 모든 사람의 선을 타고 메시지를 동시에 뿌립니다.
-        for connection in self.active_connections:
-            await connection.send_text(message)
+    async def broadcast_to_room(self, room_id: str, message: str):
+        # 특정 방에 있는 사람들에게만 메시지를 뿌립니다.
+        if room_id in self.room_connections:
+            for connection in self.room_connections[room_id]:
+                await connection.send_text(message)
 
 manager = ConnectionManager()
 
 
-# --- [2. 테스트용 프론트엔드 HTML] ---
-# 브라우저로 접속했을 때 웹소켓을 직접 테스트할 수 있는 초간단 화면입니다.
+# --- [2. 테스트용 프론트엔드 HTML (방 이름 표시 기능 추가)] ---
 html = """
 <!DOCTYPE html>
 <html>
@@ -35,17 +40,21 @@ html = """
         <title>FastAPI Chat Test</title>
     </head>
     <body>
-        <h1>FastAPI 실시간 채팅방</h1>
+        <h1>FastAPI 실시간 채팅방: <span id="room-name" style="color: blue;"></span></h1>
         <ul id='messages'></ul>
         <input type="text" id="messageText" autocomplete="off"/>
         <button onclick="sendMessage()">전송</button>
         
         <script>
-            // 현재 접속 주소에 맞춰 ws:// 또는 wss:// 주소를 자동으로 맞춥니다. (로컬/배포 공용)
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            // URL 주소창에서 ?room=방이름 부분을 쏙 빼옵니다. (없으면 기본값 'lobby')
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room') || 'lobby';
+            document.getElementById('room-name').innerText = roomId;
 
-            // 서버로부터 메시지가 왔을 때 화면에 리스트로 추가하는 함수
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // 서버로 연결할 때 내가 어떤 방에 들어가는지 경로에 담아서 알려줍니다. (/ws/apple 같은 형태)
+            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/${roomId}`);
+
             ws.onmessage = function(event) {
                 const messages = document.getElementById('messages');
                 const message = document.createElement('li');
@@ -54,7 +63,6 @@ html = """
                 messages.appendChild(message);
             };
 
-            // 전송 버튼을 누르면 인풋 창의 텍스트를 서버로 쏘는 함수
             function sendMessage() {
                 const input = document.getElementById("messageText");
                 ws.send(input.value);
@@ -65,32 +73,27 @@ html = """
 </html>
 """
 
-# 일반적인 REST API 방식처럼, 처음 접속했을 때 위의 HTML 화면을 그려주는 엔드포인트입니다.
 @app.get("/")
 async def get():
     return HTMLResponse(html)
 
 
-# --- [3. 웹소켓 엔드포인트] ---
-# 클라이언트가 실시간 연결을 맺는 통로입니다.
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket) # 유저가 오면 연결을 맺고 리스트에 보관
+# --- [3. 웹소켓 엔드포인트 (경로에 room_id 추가)] ---
+# URL 경로 자체에 /ws/{room_id}를 넣어서 방을 구분합니다.
+@app.websocket("/ws/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    await manager.connect(room_id, websocket) # 해당 방 바구니에 유저 추가
     try:
         while True:
-            # 클라이언트가 메시지를 보낼 때까지 일꾼이 여기서 딱 대기(Await)합니다.
             data = await websocket.receive_text()
-            # 메시지가 들어오면 관리자에게 넘겨서 모든 접속자에게 뿌립니다.
-            await manager.broadcast(f"익명 유저: {data}")
+            # 메시지를 보낼 때 어떤 방에 보낼지 알려줍니다.
+            await manager.broadcast_to_room(room_id, f"익명 유저: {data}")
     except WebSocketDisconnect:
-        # 유저가 브라우저 창을 닫거나 나가면 실행됩니다.
-        manager.disconnect(websocket)
-        await manager.broadcast("한 명의 유저가 퇴장했습니다.")
+        manager.disconnect(room_id, websocket)
+        await manager.broadcast_to_room(room_id, "한 명의 유저가 퇴장했습니다.")
 
 
-# --- [4. 서버 실행 설정 (Railway 배포 대응)] ---
 if __name__ == "__main__":
     import uvicorn
-    # Railway가 환경변수로 던져주는 PORT가 있으면 그걸 쓰고, 없으면 로컬 환경용 8000번을 씁니다.
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
